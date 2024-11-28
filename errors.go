@@ -211,6 +211,12 @@ func (x *Error) ID(id string) *Error {
 	return x
 }
 
+func (x *Error) New() *Error {
+	err := newError()
+	x.copy(err)
+	return err
+}
+
 // Wrap creates a new Error and copy message and id to new one.
 func (x *Error) Wrap(cause error) *Error {
 	err := newError()
