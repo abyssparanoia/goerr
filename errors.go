@@ -219,6 +219,14 @@ func (x *Error) Wrap(cause error) *Error {
 	return err
 }
 
+// Errorf creates a new Error and copy message and id to new one. The error message is formatted by fmt.Sprintf.
+func (x *Error) Errorf(format string, args ...any) *Error {
+	err := newError()
+	x.copy(err)
+	err.cause = fmt.Errorf(format, args...)
+	return err
+}
+
 // Values returns map of key and value that is set by With. All wrapped goerr.Error key and values will be merged. Key and values of wrapped error is overwritten by upper goerr.Error.
 func (x *Error) Values() map[string]any {
 	var values map[string]any
