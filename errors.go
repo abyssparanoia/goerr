@@ -327,13 +327,9 @@ func (x *Error) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if x.detail != "" {
 		enc.AddString("detail", x.detail)
 	}
-	enc.AddArray("values", zapcore.ArrayMarshalerFunc(func(inner zapcore.ArrayEncoder) error {
+	enc.AddObject("values", zapcore.ObjectMarshalerFunc(func(inner zapcore.ObjectEncoder) error {
 		for k, v := range x.values {
-			inner.AppendObject(zapcore.ObjectMarshalerFunc(func(enc zapcore.ObjectEncoder) error {
-				enc.AddString("key", k)
-				enc.AddReflected("value", v)
-				return nil
-			}))
+			inner.AddReflected(k, v)
 		}
 		return nil
 	}))
