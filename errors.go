@@ -170,6 +170,10 @@ func (x *Error) Format(s fmt.State, verb rune) {
 	}
 }
 
+func (x *Error) Message() string {
+	return x.msg
+}
+
 // Unwrap returns *fundamental of github.com/pkg/errors
 func (x *Error) Unwrap() error {
 	return x.cause
