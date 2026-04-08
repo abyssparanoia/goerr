@@ -221,3 +221,65 @@ func TestUnstack(t *testing.T) {
 		}
 	})
 }
+
+func TestWithMetadata(t *testing.T) {
+	t.Run("stores metadata separately from values", func(t *testing.T) {
+		err := goerr.New("test error").
+			WithValue("internal_id", "secret").
+			WithMetadata("invitation_id", "inv_123").
+			WithMetadata("email_domain", "example.com")
+
+		meta := err.Metadata()
+		if meta["invitation_id"] != "inv_123" {
+			t.Errorf("expected invitation_id=inv_123, got %q", meta["invitation_id"])
+		}
+		if meta["email_domain"] != "example.com" {
+			t.Errorf("expected email_domain=example.com, got %q", meta["email_domain"])
+		}
+
+		// WithValue must NOT bleed into Metadata
+		if _, ok := meta["internal_id"]; ok {
+			t.Errorf("internal_id should not appear in Metadata, but it does")
+		}
+
+		// Metadata must NOT bleed into Values
+		vals := err.Values()
+		if _, ok := vals["invitation_id"]; ok {
+			t.Errorf("invitation_id should not appear in Values, but it does")
+		}
+	})
+
+	t.Run("merges metadata across Wrap chain (outer wins)", func(t *testing.T) {
+		inner := goerr.New("inner").WithMetadata("key", "inner_val").WithMetadata("only_inner", "yes")
+		outer := goerr.New("outer").WithMetadata("key", "outer_val").Wrap(inner)
+
+		meta := outer.Metadata()
+		if meta["key"] != "outer_val" {
+			t.Errorf("expected outer to win: got %q", meta["key"])
+		}
+		if meta["only_inner"] != "yes" {
+			t.Errorf("expected only_inner from wrapped chain: got %q", meta["only_inner"])
+		}
+	})
+
+	t.Run("New() on template copies metadata", func(t *testing.T) {
+		template := goerr.New("template").WithMetadata("reason", "template_reason")
+		instance := template.New()
+
+		meta := instance.Metadata()
+		if meta["reason"] != "template_reason" {
+			t.Errorf("expected reason=template_reason, got %q", meta["reason"])
+		}
+	})
+
+	t.Run("empty metadata returns empty map (not nil)", func(t *testing.T) {
+		err := goerr.New("no metadata")
+		meta := err.Metadata()
+		if meta == nil {
+			t.Error("expected non-nil map")
+		}
+		if len(meta) != 0 {
+			t.Errorf("expected empty map, got %v", meta)
+		}
+	})
+}
