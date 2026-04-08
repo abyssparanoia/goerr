@@ -74,6 +74,7 @@ type Error struct {
 	st       *stack
 	cause    error
 	values   values
+	metadata map[string]string
 	code     string
 	category string
 	detail   string
@@ -81,9 +82,10 @@ type Error struct {
 
 func newError() *Error {
 	return &Error{
-		st:     callers(),
-		values: make(values),
-		id:     uuid.New().String(),
+		st:       callers(),
+		values:   make(values),
+		metadata: make(map[string]string),
+		id:       uuid.New().String(),
 	}
 }
 
@@ -93,6 +95,9 @@ func (x *Error) copy(dst *Error) {
 	dst.cause = x.cause
 	for k, v := range x.values {
 		dst.values[k] = v
+	}
+	for k, v := range x.metadata {
+		dst.metadata[k] = v
 	}
 	dst.code = x.code
 	dst.category = x.category
@@ -108,6 +113,7 @@ func (x *Error) Printable() *printable {
 		StackTrace: x.Stacks(),
 		Cause:      x.cause,
 		Values:     make(map[string]any),
+		Metadata:   make(map[string]string),
 		Code:       x.code,
 		Category:   x.category,
 		Detail:     x.detail,
@@ -115,18 +121,22 @@ func (x *Error) Printable() *printable {
 	for k, v := range x.values {
 		e.Values[k] = v
 	}
+	for k, v := range x.metadata {
+		e.Metadata[k] = v
+	}
 	return e
 }
 
 type printable struct {
-	Message    string         `json:"message"`
-	ID         string         `json:"id"`
-	StackTrace []*Stack       `json:"stacktrace"`
-	Cause      error          `json:"cause"`
-	Values     map[string]any `json:"values"`
-	Code       string         `json:"code"`
-	Category   string         `json:"category"`
-	Detail     string         `json:"detail"`
+	Message    string            `json:"message"`
+	ID         string            `json:"id"`
+	StackTrace []*Stack          `json:"stacktrace"`
+	Cause      error             `json:"cause"`
+	Values     map[string]any    `json:"values"`
+	Metadata   map[string]string `json:"metadata"`
+	Code       string            `json:"code"`
+	Category   string            `json:"category"`
+	Detail     string            `json:"detail"`
 }
 
 // Error returns error message for error interface
@@ -183,6 +193,35 @@ func (x *Error) Unwrap() error {
 func (x *Error) WithValue(key string, value any) *Error {
 	x.values[key] = value
 	return x
+}
+
+// WithMetadata adds a key-value pair that will be included in the gRPC/HTTP error response.
+// Unlike WithValue (which is for internal logging only), metadata is intentionally exposed to clients.
+func (x *Error) WithMetadata(key, value string) *Error {
+	x.metadata[key] = value
+	return x
+}
+
+// Metadata returns a merged map of all metadata set by WithMetadata across the wrapped goerr chain.
+// Outer (wrapping) errors overwrite inner (wrapped) errors for the same key.
+func (x *Error) Metadata() map[string]string {
+	var merged map[string]string
+
+	if cause := x.Unwrap(); cause != nil {
+		if err, ok := cause.(*Error); ok {
+			merged = err.Metadata()
+		}
+	}
+
+	if merged == nil {
+		merged = make(map[string]string)
+	}
+
+	for k, v := range x.metadata {
+		merged[k] = v
+	}
+
+	return merged
 }
 
 // Unstack trims stack trace by 1. It can be used for internal helper or utility functions.
@@ -307,6 +346,11 @@ func (x *Error) LogValue() slog.Value {
 		values = append(values, slog.Any(k, v))
 	}
 	attrs = append(attrs, slog.Group("values", values...))
+	var metaAttrs []any
+	for k, v := range x.metadata {
+		metaAttrs = append(metaAttrs, slog.String(k, v))
+	}
+	attrs = append(attrs, slog.Group("metadata", metaAttrs...))
 
 	var stacktrace any
 	var traces []string
@@ -352,6 +396,12 @@ func (x *Error) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 				enc.AddReflected("value", v)
 				return nil
 			}))
+		}
+		return nil
+	}))
+	enc.AddObject("metadata", zapcore.ObjectMarshalerFunc(func(enc zapcore.ObjectEncoder) error {
+		for k, v := range x.metadata {
+			enc.AddString(k, v)
 		}
 		return nil
 	}))
